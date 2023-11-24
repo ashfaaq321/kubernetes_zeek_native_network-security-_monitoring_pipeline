@@ -1,0 +1,117 @@
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zeek-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zeek
+  template:
+    metadata:
+      labels:
+        app: zeek
+    spec:
+      tolerations:                          # Add this section to specify tolerations
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: zeek
+        image: zeek/zeek:latest
+        command: ["zeek", "-i", "eth0"]
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "0.5"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: zeek-config
+          mountPath: /usr/local/zeek/etc/
+        - name: data-volume
+          mountPath: /data
+        ports:
+        - containerPort: 4777
+      volumes:
+      - name: zeek-config
+        configMap:
+          name: zeek-config
+      - name: data-volume
+      - name: config-volume
+        configMap:
+          name: debian-sources-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debian-sources-config
+data:
+  debian.sources: |
+    Types: deb
+    URIs: http://deb.debian.org/debian
+    Suites: bookworm bookworm-updates
+    Components: main
+    Packages: net-tools, iputils-ping
+    Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeek-config
+data:
+  node.cfg: |
+    [zeek]
+    type=standalone
+    host=localhost
+  networks.cfg: |
+    10.244.0.0/16 Kubernetes Cluster
+  default.cfg: |
+    # Default Zeek configuration file
+  zeekctl.cfg: |
+    LogRotationInterval = 3600
+    LogExpireInterval = 0
+    StatsLogEnable = 1
+    StatsLogExpireInterval = 0
+    StatusCmdShowAll = 0
+    CrashExpireInterval = 0
+    SitePolicyScripts = local.zeek
+    LogDir = /usr/local/zeek/logs
+    SpoolDir = /usr/local/zeek/spool
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zeek-service
+spec:
+  selector:
+    app: zeek
+  ports:
+  - name: zeek-port
+    port: 4777
+    targetPort: 4777
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zeek-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: zeek
+  ingress:
+  - from:
+    - podSelector: {}
+  egress:
+  - to:
+

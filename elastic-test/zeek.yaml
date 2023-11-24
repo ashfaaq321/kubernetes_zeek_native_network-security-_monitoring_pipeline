@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zeek-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: zeek
+  template:
+    metadata:
+      labels:
+        app: zeek
+    spec:
+      hostNetwork: true
+      containers:
+        - name: zeek
+          image: sacredspirits47/zeek-custom-ss360:pv3
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data/capture-files
+            - name: zeek-config-volume
+              mountPath: /usr/local/zeek/etc
+          ports:
+            - containerPort: 4777
+        - name: tcpdump
+          image: sacredspirits47/ss360-tcpdump
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          command: ["tcpdump", "-i", "any", "-w", "/shared-data/capture.pcap"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /shared-data
+      volumes:
+        - name: data-volume
+          emptyDir: {}
+        - name: zeek-config-volume
+          configMap:
+            name: zeek-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zeek-service
+spec:
+  selector:
+    app: zeek
+  ports:
+    - name: zeek-port
+      port: 47777
+      targetPort: 4777
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zeek-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: zeek
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    - {}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeek-config
+data:
+  node.cfg: |
+    [zeek]
+    type=standalone
+    host=localhost
+    interface=eth1
+
+  networks.cfg: |
+    10.244.0.0/16 Kubernetes
+
+  default.cfg: |
+    # Add content for default.cfg if necessary
+
+  zeekctl.cfg: |
+    LogRotationInterval = 3600
+    LogExpireInterval = 0
+    StatsLogEnable = 1
+    StatsLogExpireInterval = 0
+    StatusCmdShowAll = 0
+    CrashExpireInterval = 0
+    SitePolicyScripts = local.zeek
+    LogDir = /usr/local/zeek/logs
+    SpoolDir = /usr/local/zeek/spool
+
+  local.zeek: |
+    redef Log::default_dir = "/data/log-files";
+    redef Log::default_prefix = "zeek";
+
+    @load base/protocols/conn
+    @load base/frameworks/logging/writers/ascii
+    @load base/protocols/http
+    @load base/protocols/dns
+    @load base/protocols/ssl
+    @load base/protocols/ssh
+    @load base/protocols/mysql
+    @load base/protocols/dhcp
+    @load base/protocols/ntp
+    @load misc/loaded-scripts
+    @load tuning/defaults
+    @load misc/capture-loss
+    @load packages/zeek-kafka
+    @load misc/stats
+    @load misc/scan
+    @load misc/detect-traceroute
+    @load frameworks/software/vulnerable
+    @load frameworks/software/version-changes
+    @load protocols/ftp/software
+    @load protocols/smtp/software
+    @load protocols/ssh/software
+    @load protocols/http/software
+    @load protocols/conn/known-hosts
+    @load protocols/conn/known-services
+    @load protocols/ssl/known-certs
+    @load protocols/ssl/validate-certs
+    @load protocols/http/detect-sqli
+    @load frameworks/files/hash-all-files
+    @load frameworks/files/detect-MHR
+    @load policy/tuning/json-logs
+
+    redef Kafka::tag_json = T;
+
+    event zeek_init() &priority=-10
+    {
+        Log::create_stream(Conn::LOG, [$columns=Conn::LOG_COLS, $path="/data/log-files/conn.log"]);
+        Log::create_stream(HTTP::LOG, [$columns=HTTP::LOG_COLS, $path="/data/log-files/http.log"]);
+        Log::create_stream(PacketFilter::LOG, [$columns=PacketFilter::LOG_COLS, $path="/data/log-files/packet_filter.log"]);
+        Log::create_stream(SSL::LOG, [$columns=SSL::LOG_COLS, $path="/data/log-files/ssl.log"]);
+        Log::create_stream(SSH::LOG, [$columns=SSH::LOG_COLS, $path="/data/log-files/ssh.log"]);
+        Log::create_stream(MySQL::LOG, [$columns=MySQL::LOG_COLS, $path="/data/log-files/mysql.log"]);
+        Log::create_stream(DNS::LOG, [$columns=DNS::LOG_COLS, $path="/data/log-files/dns.log"]);
+        Log::create_stream(DHCP::LOG, [$columns=DHCP::LOG_COLS, $path="/data/log-files/dhcp.log"]);
+        Log::create_stream(NTP::LOG, [$columns=NTP::LOG_COLS, $path="/data/log-files/ntp.log"]);
+
+        for (log_file in Log::get_logs())
+        {
+            if (log_file == HTTP::LOG) {
+                Log::add_filter(HTTP::LOG, [
+                    $name = "kafka-http",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else if (log_file == DNS::LOG) {
+                Log::add_filter(DNS::LOG, [
+                    $name = "kafka-dns",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else if (log_file == Conn::LOG) {
+                Log::add_filter(Conn::LOG, [
+                    $name = "kafka-conn",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else {
+                Log::add_filter(log_file, [
+                    $name = log_file + "_kafka",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            }
+        }
+    }

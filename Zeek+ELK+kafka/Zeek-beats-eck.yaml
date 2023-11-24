@@ -1,0 +1,267 @@
+apiVersion: beat.k8s.elastic.co/v1beta1
+kind: Beat
+metadata:
+  name: filebeat
+spec:
+  type: filebeat
+  version: 8.3.0
+  config:
+    filebeat.inputs:
+      - type: container
+        paths:
+          - /var/log/containers/*.log     #Clutser logs
+          - /usr/log/containers/*.log     #Pod logs
+        processors:
+          - add_kubernetes_metadata:
+              host: ${NODE_NAME}
+              matchers:
+                - logs_path:
+                    logs_path: "/var/log/containers/"
+          - drop_event.when:
+              or:
+                - equals:
+                    kubernetes.namespace: "kube-system"
+                - equals:
+                    kubernetes.namespace: "logging"
+                - equals:
+                    kubernetes.namespace: "ingress-nginx-controller"
+                - equals:
+                    kubernetes.namespace: "kube-node-lease"
+                - equals:
+                    kubernetes.namespace: "elastic-system"
+    output.logstash:
+      hosts: ["logstash.logging.svc:5044"]
+  daemonSet:
+    podTemplate:
+      spec:
+        serviceAccountName: filebeat
+        automountServiceAccountToken: true
+        terminationGracePeriodSeconds: 30
+        tolerations:
+          - key: dedicated
+            operator: Exists
+            effect: NoSchedule
+        dnsPolicy: ClusterFirstWithHostNet
+        hostNetwork: true
+        containers:
+          - name: filebeat
+            securityContext:
+              runAsUser: 0
+            volumeMounts:
+              - name: varlogcontainers
+                mountPath: /var/log/containers
+              - name: varlogpods
+                mountPath: /var/log/pods
+              - name: varlibdockercontainers
+                mountPath: /var/lib/docker/containers
+              - name: zeek-data-volume
+                mountPath: /usr/local/containers  # Mount Zeek shared data into Filebeat
+            env:
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+            resources:
+              limits:
+                cpu: 500m
+                memory: 2000Mi
+              requests:
+                cpu: 100m
+                memory: 200Mi
+          - name: zeek
+            image: sacredspirits47/zeek-custom-ss360:pv3
+            securityContext:
+              privileged: true
+            volumeMounts:
+              - name: data-volume
+                mountPath: /data/capture-files  # Shared data for Zeek
+              - name: zeek-data-volume
+                mountPath: /data/log-files  # Mount Zeek shared data into Filebeat
+              - name: zeek-config-volume
+                mountPath: /usr/local/zeek/etc
+            ports:
+              - containerPort: 4777
+          - name: tcpdump
+            image: sacredspirits47/ss360-tcpdump
+            securityContext:
+              capabilities:
+                add:
+                  - NET_ADMIN
+            command: ["tcpdump", "-i", "any", "-w", "/shared-data/capture.pcap"]  # Shared data for Tcpdump
+            volumeMounts:
+              - name: data-volume
+                mountPath: /shared-data  # Mount Zeek shared data into Tcpdump
+        volumes:
+          - name: varlogcontainers
+            hostPath:
+              path: /var/log/containers
+          - name: varlogpods
+            hostPath:
+              path: /var/log/pods
+          - name: varlibdockercontainers
+            hostPath:
+              path: /var/lib/docker/containers
+          - name: zeek-shared-data
+            emptyDir: {}
+          - name: zeek-config-volume
+            configMap:
+              name: zeek-config
+          - name: data-volume
+            emptyDir: {}
+          - name: zeek-data-volume
+            emptyDir: {}
+
+---
+ 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs:
+  - get
+  - watch
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+- kind: ServiceAccount
+  name: filebeat
+  namespace: logging
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+ 
+---
+ 
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeek-config
+data:
+  node.cfg: |
+    [zeek]
+    type=standalone
+    host=localhost
+    interface=eth1
+
+  networks.cfg: |
+    10.244.0.0/16 Kubernetes
+
+  default.cfg: |
+    # Add content for default.cfg if necessary
+
+  zeekctl.cfg: |
+    LogRotationInterval = 3600
+    LogExpireInterval = 0
+    StatsLogEnable = 1
+    StatsLogExpireInterval = 0
+    StatusCmdShowAll = 0
+    CrashExpireInterval = 0
+    SitePolicyScripts = local.zeek
+    LogDir = /usr/local/zeek/logs
+    SpoolDir = /usr/local/zeek/spool
+
+  local.zeek: |
+    redef Log::default_dir = "/data/log-files";
+    redef Log::default_prefix = "zeek";
+
+    @load base/protocols/conn
+    @load base/frameworks/logging/writers/ascii
+    @load base/protocols/http
+    @load base/protocols/dns
+    @load base/protocols/ssl
+    @load base/protocols/ssh
+    @load base/protocols/mysql
+    @load base/protocols/dhcp
+    @load base/protocols/ntp
+    @load misc/loaded-scripts
+    @load tuning/defaults
+    @load misc/capture-loss
+    @load packages/zeek-kafka
+    @load misc/stats
+    @load misc/scan
+    @load misc/detect-traceroute
+    @load frameworks/software/vulnerable
+    @load frameworks/software/version-changes
+    @load protocols/ftp/software
+    @load protocols/smtp/software
+    @load protocols/ssh/software
+    @load protocols/http/software
+    @load protocols/conn/known-hosts
+    @load protocols/conn/known-services
+    @load protocols/ssl/known-certs
+    @load protocols/ssl/validate-certs
+    @load protocols/http/detect-sqli
+    @load frameworks/files/hash-all-files
+    @load frameworks/files/detect-MHR
+    @load policy/tuning/json-logs
+
+    redef Kafka::tag_json = T;
+
+    event zeek_init() &priority=-10
+    {
+        Log::create_stream(Conn::LOG, [$columns=Conn::LOG_COLS, $path="/data/log-files/conn.log"]);
+        Log::create_stream(HTTP::LOG, [$columns=HTTP::LOG_COLS, $path="/data/log-files/http.log"]);
+        Log::create_stream(PacketFilter::LOG, [$columns=PacketFilter::LOG_COLS, $path="/data/log-files/packet_filter.log"]);
+        Log::create_stream(SSL::LOG, [$columns=SSL::LOG_COLS, $path="/data/log-files/ssl.log"]);
+        Log::create_stream(SSH::LOG, [$columns=SSH::LOG_COLS, $path="/data/log-files/ssh.log"]);
+        Log::create_stream(MySQL::LOG, [$columns=MySQL::LOG_COLS, $path="/data/log-files/mysql.log"]);
+        Log::create_stream(DNS::LOG, [$columns=DNS::LOG_COLS, $path="/data/log-files/dns.log"]);
+        Log::create_stream(DHCP::LOG, [$columns=DHCP::LOG_COLS, $path="/data/log-files/dhcp.log"]);
+        Log::create_stream(NTP::LOG, [$columns=NTP::LOG_COLS, $path="/data/log-files/ntp.log"]);
+
+        for (log_file in Log::get_logs())
+        {
+            if (log_file == HTTP::LOG) {
+                Log::add_filter(HTTP::LOG, [
+                    $name = "kafka-http",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else if (log_file == DNS::LOG) {
+                Log::add_filter(DNS::LOG, [
+                    $name = "kafka-dns",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else if (log_file == Conn::LOG) {
+                Log::add_filter(Conn::LOG, [
+                    $name = "kafka-conn",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $pred = { return ! ((|log_file$id$orig_h| == 128 || |log_file$id$resp_h| == 128) || log_file$id$orig_h == "127.0.0.1" || log_file$id$resp_h == "127.0.0.1"); },
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            } else {
+                Log::add_filter(log_file, [
+                    $name = log_file + "_kafka",
+                    $writer = Log::WRITER_KAFKAWRITER,
+                    $config = table(
+                        "metadata.broker.list" = " 192.168.121.4:9092"
+                    )
+                ]);
+            }
+        }
+    }

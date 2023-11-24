@@ -1,0 +1,65 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+ENV['VAGRANT_NO_PARALLEL'] = 'yes'
+
+VAGRANT_BOX         = "generic/ubuntu2204"
+VAGRANT_BOX_VERSION = "4.2.10"
+CPUS_MASTER_NODE    = 2
+CPUS_WORKER_NODE    = 1
+MEMORY_MASTER_NODE  = 2048
+MEMORY_WORKER_NODE  = 1024
+
+Vagrant.configure(2) do |config|
+
+  # Kubernetes Master Server
+  config.vm.define "kmaster" do |node|
+    node.vm.box               = VAGRANT_BOX
+    node.vm.box_version       = VAGRANT_BOX_VERSION
+    node.vm.hostname          = "kmaster.example.com"
+    node.vm.network "private_network", type: "dhcp", dev: "wlp0s20f3"  # Change 'dhcp' and ':dev' as per your setup
+    node.vm.network "forwarded_port", guest: 80, host: 80
+    node.vm.network "forwarded_port", guest: 9901, host: 9901
+    node.vm.network "forwarded_port", guest: 2049, host: 2049
+    node.vm.network "forwarded_port", guest: 81, host: 81
+    node.vm.network "forwarded_port", guest: 9902, host: 9902
+    #node.vm.synced_folder ".", "/vagrant", disabled: true
+    #node.vm.synced_folder ".", "/home/vagrant/nfs"
+    #node.vm.provider :libvirt do |v|
+    #  v.memory  = MEMORY_MASTER_NODE
+    #  v.cpus    = CPUS_MASTER_NODE
+    #end
+    #node.vm.provision "shell", path: "script1.sh" #, args: "> /dev/null 2>&1"
+    #node.vm.provision "ansible" do |ansible|
+    #  ansible.playbook = "nfs/nfs.yaml"
+    #  ansible.extra_vars = {
+    #    nfs_config: "/etc/exports",
+    #    nfs_config_backup: "/mnt/backups"
+    #  }
+    #end
+    #node.vm.provision "shell", path: "kmaster-script-2.sh" #, args: "> /dev/null 2>&1"
+    #node.vm.provision "shell", inline: "sudo reboot" #, args: "> /dev/null 2>&1"
+  end
+
+  # Kubernetes Worker Node 1
+  config.vm.define "kworker1" do |node|
+    node.vm.box               = VAGRANT_BOX
+    node.vm.box_version       = VAGRANT_BOX_VERSION
+    node.vm.hostname          = "kworker1.example.com"
+    node.vm.network "private_network", type: "dhcp", dev: "wlp0s20f3"  # Change 'dhcp' and ':dev' as per your setup
+    node.vm.network "forwarded_port", guest: 80, host: 80
+    node.vm.network "forwarded_port", guest: 9901, host: 9901
+    node.vm.network "forwarded_port", guest: 2049, host: 2049
+    node.vm.network "forwarded_port", guest: 81, host: 81
+    node.vm.network "forwarded_port", guest: 9902, host: 9902
+    node.vm.provider :libvirt do |v|
+      v.memory  = MEMORY_WORKER_NODE
+      v.cpus    = CPUS_WORKER_NODE
+    end
+    #node.vm.provision "shell", path: "script1.sh" #, args: "> /dev/null 2>&1"
+    #node.vm.provision "shell", path: "kworker-scrip2.sh" #, args: "> /dev/null 2>&1"
+    #node.vm.provision "shell", path: "/var/tmp/Kubernetes/join.sh"
+    #node.vm.provision "shell", inline: "sudo reboot"
+  end
+end
+

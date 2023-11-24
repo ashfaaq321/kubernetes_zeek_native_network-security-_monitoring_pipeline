@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zeek-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: zeek
+  template:
+    metadata:
+      labels:
+        app: zeek
+    spec:
+      hostNetwork: true
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/memory-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: zeek
+          image: sacredspirits47/zeek-custom-ss360:latest
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "0.5"
+            limits:
+              memory: "512Mi"
+              cpu: "0.75"
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+          ports:
+            - containerPort: 4777
+        - name: tcpdump
+          image: sacredspirits47/ss360-tcpdump
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          command: ["tcpdump", "-i", "any", "-w", "/shared-data/capture.pcap"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /shared-data
+      volumes:
+        - name: data-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zeek-service
+spec:
+  selector:
+    app: zeek
+  ports:
+    - name: zeek-port
+      port: 47777
+      targetPort: 4777
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zeek-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: zeek
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    - {}
+

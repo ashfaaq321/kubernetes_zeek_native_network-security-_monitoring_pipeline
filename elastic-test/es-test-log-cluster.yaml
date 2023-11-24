@@ -1,0 +1,53 @@
+apiVersion: logstash.k8s.elastic.co/v1alpha1
+kind: Logstash
+metadata:
+  name: quickstart
+spec:
+  count: 1
+  elasticsearchRefs:
+    - name: quickstart
+      clusterName: qs
+  version: 8.11.1
+  pipelines:
+    - pipeline.id: main
+      config.string: |
+        input {
+          kafka {
+            consumer_restart_on_error => true
+            consumer_threads => 2
+            group_id => "elk"
+            topic_id => "test002"
+            type => "application-log"
+            zk_connect => "zoo1:2181"
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => ["https://quickstart-es-http"]
+            user => "elastic"
+            password => "c476sq6AQc48dVVC90W62ZgF"
+            ssl_certificate_authorities => "/usr/share/logstash/config/certs/ca.crt"
+          }
+        }
+  volumeClaimTemplates:
+    - metadata:
+        name: dlq
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 500Mi
+        storageClassName: persistent-volume
+  podTemplate:
+    spec:
+      containers:
+        - name: logstash
+          volumeMounts:
+            - name: es-secret-volume
+              mountPath: "/usr/share/logstash/config/certs"
+      volumes:
+        - name: es-secret-volume
+          secret:
+            secretName: quickstart-es-http-certs-public
+            readOnly: true

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: filebeat-test
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: filebeat-test
+  template:
+    metadata:
+      labels:
+        name: filebeat-test
+    spec:
+      containers:
+      - image: elastic/filebeat:8.11.1
+        args: [
+          "-c", "/etc/filbeat.yml",
+          "-e",
+        ]
+        name: filebeat
+        volumeMounts:
+        - name: app-logs
+          mountPath: /log
+        - name: filebeat-config
+          mountPath: /usr/share/filebeat/filebeat.yml
+          subPath: filebeat.yml
+      volumes:
+      - name: app-logs
+        emptyDir: {}
+      - name: filebeat-config
+        configMap:
+          name: filebeat-config
+          items:
+          - key: filebeat.yml
+            path: filebeat.yml
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+data:
+  filebeat.yml: |
+    filebeat.prospectors:
+    - input_type: log
+      paths:
+        - "/log/*"
+    output.kafka:
+      hosts: ["kafka-service:9092"]
+      topic: "test002"
+      required_acks: 1
+      compression: gzip

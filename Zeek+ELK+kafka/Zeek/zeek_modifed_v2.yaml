@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zeek-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: zeek
+  template:
+    metadata:
+      labels:
+        app: zeek
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: zeek
+        image: sacredspirits47/zeek-custom-ss360:latest
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "0.5"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: zeek-config
+          mountPath: /usr/local/zeek/etc/
+        - name: data-volume
+          mountPath: /data
+        ports:
+        - containerPort: 4777
+      volumes:
+      - name: zeek-config
+        configMap:
+          name: zeek-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeek-config
+data:
+  node.cfg: |
+    [zeek]
+    type=standalone
+    host=localhost
+    interface=eth0
+  networks.cfg: |
+    10.244.0.0/16 Kubernetes Cluster
+    10.96.0.0/12 Kubernetes Cluster Service
+    10.0.1.0/24 Pod ranges
+  default.cfg: |
+    # Default Zeek configuration file
+  zeekctl.cfg: |
+    LogRotationInterval = 3600
+    LogExpireInterval = 0
+    StatsLogEnable = 1
+    StatsLogExpireInterval = 0
+    StatusCmdShowAll = 0
+    CrashExpireInterval = 0
+    SitePolicyScripts = local.zeek
+    LogDir = /usr/local/zeek/logs
+    SpoolDir = /usr/local/zeek/spool
+  local.zeek: |
+    # Enable the default log file settings
+    @load frameworks/logging/writers/ascii
+
+    # Specify log rotation settings
+    LogRotationInterval = 3600
+    LogExpireInterval = 1 day
+
+    # Define log writers for specific log files
+    Log::default_rotation_interval = 1 day
+    Log::default_disk_space = 1GB
+
+    # Enable the logs you want to generate
+    @load protocols/conn/conn
+    @load protocols/http/http
+    @load protocols/packet-filter
+    @load protocols/ssl
+    @load protocols/ssh
+    @load protocols/mysql
+    @load protocols/dns
+    @load protocols/dhcp
+    @load protocols/ntp
+
+    # Customize the log file paths if needed
+    redef Log::default_dir = "/usr/local/zeek/logs";
+    redef Log::default_prefix = "zeek";
+
+    # Enable specific log streams
+    event zeek_init() {
+        Log::create_stream(Conn::LOG, [$columns=Conn::LOG_COLS, $path="conn.log"]);
+        Log::create_stream(HTTP::LOG, [$columns=HTTP::LOG_COLS, $path="http.log"]);
+        Log::create_stream(PacketFilter::LOG, [$columns=PacketFilter::LOG_COLS, $path="packet_filter.log"]);
+        Log::create_stream(SSL::LOG, [$columns=SSL::LOG_COLS, $path="ssl.log"]);
+        Log::create_stream(SSH::LOG, [$columns=SSH::LOG_COLS, $path="ssh.log"]);
+        Log::create_stream(MySQL::LOG, [$columns=MySQL::LOG_COLS, $path="mysql.log"]);
+        Log::create_stream(DNS::LOG, [$columns=DNS::LOG_COLS, $path="dns.log"]);
+        Log::create_stream(DHCP::LOG, [$columns=DHCP::LOG_COLS, $path="dhcp.log"]);
+        Log::create_stream(NTP::LOG, [$columns=NTP::LOG_COLS, $path="ntp.log"]);
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zeek-service
+spec:
+  selector:
+    app: zeek
+  ports:
+  - name: zeek-port
+    port: 4777
+    targetPort: 4777
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zeek-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: zeek
+  ingress:
+  - from:
+    - podSelector: {}
+  egress:
+  - to:

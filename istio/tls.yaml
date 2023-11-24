@@ -1,0 +1,107 @@
+# Make sure you installed istioctl
+# inject the code by using kubectl apply -f <(istioctl kube-inject -f tls.yaml)
+
+# After injecting, Make sure peerAuthentication is enabled across service mesh 
+# kubectl apply -n foo -f - <<EOF
+# apiVersion: security.istio.io/v1beta1
+# kind: PeerAuthentication
+# metadata:
+#   name: default
+# spec:
+#   mtls:
+#     mode: STRICT
+# EOF
+
+
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nginx-ns
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-tls
+  namespace: nginx-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: v1-tls
+    spec:
+      containers:
+      - name: nginx-image
+        image: nginx:latest
+        ports:
+        - name: nginx-port
+          containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: nginx-ns
+spec:
+  selector:
+    app: nginx
+  ports:
+  - name: nginx-port
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: nginx-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: nginx
+spec:
+  host: nginx-service.nginx-ns.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+  - name: v1-tls
+    labels:
+      version: v1-tls
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: nginx-tls
+spec:
+  hosts:
+  - "nginx-tls.example.com"
+  gateways:
+  - nginx-gateway
+  http:
+  - match:
+    - port: 80
+    route:
+    - destination:
+        host: nginx-service.nginx-ns.svc.cluster.local
+        subset: v1-tls
+        port:
+          number: 80
+

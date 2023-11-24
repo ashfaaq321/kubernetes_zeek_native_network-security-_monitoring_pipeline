@@ -1,0 +1,127 @@
+---
+- name: Linux NFS Server Management
+  hosts: all
+  gather_facts: yes
+  become: true
+  become_user: root
+  vars:
+    nfs_config: "/etc/exports"
+    nfs_config_backup: "/mnt/backups"
+    nfs_Kubernetes_directory: "/New/Kubernetes"
+    nfs_Ansible_directory: "/New/Ansible"
+    hostname: "kmaster"
+
+  tasks:
+    - name: Debug IP address
+      debug:
+        var: ansible_ssh_host
+
+    - name: Add hostname to hosts file
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostname }} {{ ansible_ssh_host }}"
+
+    - name: Remove unwanted repository lines
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "{{ item }}"
+        state: present
+      loop:
+        - deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+        - deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+        - deb http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse
+        - deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse
+        - deb http://archive.canonical.com/ubuntu/ jammy partner
+
+    - name: Remove unwanted repository lines
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "{{ item }}"
+        state: absent
+      loop:
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy main restricted
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-updates main restricted
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy universe
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-updates universe
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy multiverse
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-updates multiverse
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-backports main restricted universe multiverse
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-security main restricted
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-security universe
+        - deb https://mirrors.edge.kernel.org/ubuntu/ jammy-security multiverse
+
+    - name: Update apt repo and cache
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+
+    - name: Install NFS server
+      apt:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Ensure NFS service is enabled and running
+      service:
+        name: nfs-server
+        state: started
+        enabled: yes
+
+    - name: Ensure backup directory is present
+      file:
+        path: "{{ nfs_config_backup }}"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure NFS config backup
+      shell: cp -pr "{{ nfs_config }}" "{{ nfs_config_backup }}"
+      when: nfs_config is defined and nfs_config_backup is defined
+
+    - name: Add group
+      group:
+        name: admin
+        gid: 1001
+        state: present
+
+    - name: Add user
+      user:
+        name: admin
+        uid: 1001
+        comment: admin
+        group: admin
+
+    - name: Ensure share directory is present
+      file:
+        path: "{{ nfs_Kubernetes_directory }}"
+        state: directory
+        mode: '0755'
+        owner: admin
+        group: admin
+
+    - name: Ensure other directory is present
+      file:
+        path: "{{ nfs_Ansible_directory }}"
+        state: directory
+        mode: '0755'
+        owner: admin
+        group: admin
+
+    - name: Create file in share directory
+      shell: echo "Hello NFS Server Test!!" > "{{ nfs_Kubernetes_directory }}/hellonfs.txt"
+      become: yes
+
+    - name: Create file in other directory
+      shell: echo "Hello NFS Server Test in other!!" > "{{ nfs_Ansible_directory }}/hellonfsother.txt"
+      become: yes
+
+    - name: Configure NFS server using cidr.j2 template
+      template:
+        src: cidr.j2
+        dest: /etc/exports
+        mode: '0644'
+      when: nfs_config is defined
+      
+    - name: Restart NFS
+      service:
+        name: nfs-server
+        state: restarted
+

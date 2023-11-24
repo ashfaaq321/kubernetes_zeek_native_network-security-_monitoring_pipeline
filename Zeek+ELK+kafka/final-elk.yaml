@@ -1,0 +1,194 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: elasticsearch
+spec:
+  version: 8.3.0
+  nodeSets:
+  - name: default
+    count: 3
+    config:
+      node.store.allow_mmap: false
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: persistent-claim
+---
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: kibana
+spec:
+  version: 8.3.0
+  count: 1
+  elasticsearchRef:
+    name: elasticsearch
+  http:
+    service:
+      spec: 
+        type: LoadBalancer
+    tls:
+      selfSignedCertificate:
+        disabled: true
+ 
+---
+ 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kibana
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: kibana.20.76.198.255.nip.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: kibana-kb-http
+            port:
+              number: 5601
+        path: /
+        pathType: Prefix
+  # tls:
+  # - hosts:
+  #   - host-name
+  #   secretName: tls-secret-name
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  labels:
+    app.kubernetes.io/name: elasticsearch-logstash
+    app.kubernetes.io/component: logstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch-logstash
+      app.kubernetes.io/component: logstash
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch-logstash
+        app.kubernetes.io/component: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.3.0
+          ports:
+            - name: "tcp-beats"
+              containerPort: 5044
+          env:
+            - name: ES_HOSTS
+              value: "https://elasticsearch-es-http.logging.svc:9200"
+            - name: ES_USER
+              value: "elastic"
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-es-elastic-user
+                  key: elastic
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/share/logstash/config
+            - name: pipeline-volume
+              mountPath: /usr/share/logstash/pipeline
+            - name: ca-certs
+              mountPath: /etc/logstash/certificates
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: logstash-config
+        - name: pipeline-volume
+          configMap:
+            name: logstash-pipeline
+        - name: ca-certs
+          secret:
+            secretName: elasticsearch-es-http-certs-public
+ 
+---
+ 
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  labels:
+    app.kubernetes.io/name: elasticsearch-logstash
+    app.kubernetes.io/component: logstash
+spec:
+  ports:
+    - name: "tcp-beats"
+      port: 5044
+      targetPort: 5044
+  selector:
+    app.kubernetes.io/name: elasticsearch-logstash
+    app.kubernetes.io/component: logstash
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  labels:
+    app.kubernetes.io/name: elasticsearch-logstash
+    app.kubernetes.io/component: logstash
+data:
+  logstash.yml: |
+    http.host: 0.0.0.0
+    pipeline.ecs_compatibility: disabled
+  pipelines.yml: |
+    - pipeline.id: logstash
+      path.config: "/usr/share/logstash/pipeline/logstash.conf"
+ 
+  log4j2.properties: |
+    logger.logstashpipeline.name = logstash.inputs.beats
+    logger.logstashpipeline.level = error
+ 
+---
+ 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  labels:
+    app.kubernetes.io/name: elasticsearch-logstash
+    app.kubernetes.io/component: logstash
+data:
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+    }
+    filter {
+      json {
+        source => "message"
+      }
+      prune {
+        whitelist_names => [ "msg" ]
+      }
+      mutate {
+        rename => { "msg" => "message" }
+      }
+    }
+    output {
+      if [message]  =~ "admission" {
+        elasticsearch {
+          index => "logstashadmission-%{+YYYY.MM.dd}"
+          hosts => [ "${ES_HOSTS}" ]
+          user => "${ES_USER}"
+          password => "${ES_PASSWORD}"
+          cacert => '/etc/logstash/certificates/ca.crt'
+        }
+      }
+    }
+---

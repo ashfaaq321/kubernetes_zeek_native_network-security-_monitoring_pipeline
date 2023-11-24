@@ -1,0 +1,17 @@
+apiVersion: logstash.k8s.elastic.co/v1alpha1
+kind: Logstash
+metadata:
+  name: logstash
+spec:
+  version: 8.11.1
+  # some configuration attributes omitted for brevity here
+  volumeClaimTemplates:
+    - metadata:
+        name: logstash-data # Do not change this name unless you set up a volume mount for the data path.
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 500Mi
+        storageClassName: persistent-claim

@@ -1,0 +1,39 @@
+# What is the difference between service mesh and API gateway?
+
+# A) API gateways such as Kong and Ambassador are mostly focussed on handling external traffic and routing it inside the cluster.
+# External traffic is quite a broad label that includes things such as slow and fast clients and well behaved and malicious user
+# In other words, API gateways are designed to protect your apps from the outside world.
+
+# Service meshes, instead, are mostly used to observe and secure applications within your infrastructure. Typical uses of service meshes include:
+# monitoring and observing requests between apps, securing the connection between services using encryption (mutual TLS) and 
+# improving resiliency with circuit breakers, retries, etc. Since service meshes are deployed alongside your apps, they benefit from 
+# low latency and high bandwidth and unlikely to be targeted for misuse by bad actors
+
+# In other words, a service mesh's primary purpose is to manage internal service-to-service communication,
+# while an API Gateway is primarily meant for external client-to-service communication.
+# Service meshes focus on internal service-to-service communitcation. 
+
+
+
+# What is TLS termination proxy, TLS forward proxy?
+# TLS termination proxy: Client-Proxy agree on TLS connection such a way that there is encrypted traffic between client and proxy and unencrypted traffic between 
+# proxy and server.
+
+# Advatages: Offloads crypto, TLS close to client, we can use HTTP accelerator, IDS, load balancing/service-mesh.
+# Disadvantages: Limited by maximum number of proxies(Solution: Add LB's), 
+# Zero-day is possible if data is available. 
+
+# TLS Forward proxy: Client-Proxy agrees on one TLS connection and proxy-server encrypted with another TLS connection. 
+
+# What is service mesh?
+# A) A Kubernetes service mesh is a tool that inserts security, observability, and reliability features to applications at the platform layer instead of the application layer.
+
+# Why sidecar?
+# A) Network proxies that start up before any other container in the manifest. Every other container that runs can use the proxy container's services. Sidecar generally works as a proxy.
+
+# Anatomy of a Pod
+# Front end -> Back-end -> Inventory
+# Anatomy of Pod with sidecar involved
+# (Front-end->Proxy)->(Backend->Proxy)->(Inventory->Proxy) 
+
+# Who controls these proxies? A) Control plane - Data plae

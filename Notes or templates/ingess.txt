@@ -1,0 +1,26 @@
+#Requirements: 
+#Deploy -> Service -> Ingress
+#Cert-manager
+
+#Cert Manager Installation: 
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.crds.yaml
+helm install \
+  cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.12.0 \
+  # --set installCRDs=true
+  # Two ways to encrpyt traffic: using Self-signed and Public domain 
+  
+# 1) Self-siigned
+# Requirements: OpenSSL
+1) generate SSL Certificate with 4096 length and RSA as algo
+openssl genrsa -out ca.key 4096
+openssl req -new -x509 -sha256 -days 365 -key ca.key -out ca.crt
+2) Get the base64 encoded and copy it
+cat ca.crt | base64 -w 0
+cat ca.key | base64 -w 0
+
+

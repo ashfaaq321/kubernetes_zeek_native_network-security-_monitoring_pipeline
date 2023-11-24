@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-proxy
+  template:
+    metadata:
+      labels:
+        app: envoy-proxy
+    spec:
+      containers:
+      - name: envoy
+        image: envoyproxy/envoy:dev-706fe7871ab5fe631406db1e0fe5af1c4d0eb1b8
+        env:
+        - name: ENVOY_LB_POLICY
+          value: ROUND_ROBIN
+        - name: SERVICE_NAME
+          value: headless-service
+        - name: SERVICE_PORT
+          value: "80"
+        ports:
+        - containerPort: 9901

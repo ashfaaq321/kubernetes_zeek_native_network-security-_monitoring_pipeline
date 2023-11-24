@@ -1,0 +1,30 @@
+# Workloads - A workload is an application running on kubernetes
+# Different workloads: Pod, Replicaset, Daemonset, Statefulset, Deployment, Job, Cron-job
+
+# What is Daemonset? (kubectl get ds)
+# A) Ensures all nodes or a subnet run an instance of a pod which is scheduled by scheduled controller but run by daemon controller. Whenever node is added, all nodes which are present in other nodes will spawn in the created node.
+
+#Add toleration if needed, if we dont want to schedule on master node. 
+
+# To use stateful set, we need to have a HEADLESS SERVICE with cluster type NONE. (kubectl get sts)
+ 
+# What is init containers? 
+# A) If a container is depend on a database or a API then we use init containers. We assign init containers before deploying the main application in a pod, which ensures the configuration running. 
+ 
+#init containers are always run to completion
+
+# what are typical patters of a multi containers? 
+# A) Sidecar is used when there is a requirement of a persistent storage or a proxy in a same pod which differentiate the application code with storage/proxy. 
+
+# Adapter? A) If there is a monitoring service and requires simplification, adapter simplifies the monitoring output for service.
+
+# Ambassador? A) If it requires persist data to a database, it simplifies it to database to write into database.
+
+# Different strategies in kubernetes: 1) ReCreate 2) Rolling update 3) Blue-Green Deployments
+
+# What is blue green Deployments?
+# A) Blue-Production version, Green-Newer version, when the newer version is available simply point the service to newer version and this switches blue - newer version and green - older version. 
+# Disavantages: Extra Resources and Downtime
+
+# Main Difference between load balancer and ingress? 
+# A) load balancer sits at L4 for efficient usage of routing algorithms such as round-robin whereas ingress is a L7 and does load balancing where it is based on actual content.

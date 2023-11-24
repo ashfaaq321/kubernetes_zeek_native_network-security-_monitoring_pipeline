@@ -1,0 +1,57 @@
+--- DSA, Placement and Other Stuff ---
+
+All in one drive 
+
+https://drive.google.com/drive/u/0/mobile/folders/17ArboPYw5r-H_WLWrM0wj3TDK7kR1gav
+
+Programming Projects 
+
+https://github.com/practical-tutorials/project-based-learning#python
+
+
+
+
+--- Cyber ---
+
+Penetratuon Testing Tools 
+
+https://github.com/AlbusSec/Penetration-List
+
+OSCP cheat sheet 
+
+https://github.com/0xsyr0/OSCP
+
+
+
+
+--- Cloud --- 
+
+Resume Builder using AWS 
+
+https://youtu.be/NiCZSdWucZE?si=H0KTKcKhSrq4BxD_
+
+AWS + Terraform + WAF 
+
+https://github.com/nuwanpofficial/aws-standard-waf-terraform
+
+--- DevOps --- 
+
+Promotheus and Gramfana on K8's
+
+https://github.com/antonputra/tutorials/tree/main/lessons/135/monitoring
+
+Diagrams of K8's orchestration in easy way 
+
+https://github.com/Trois-Six/k8s-diagrams
+
+DevOps projects 
+
+https://www.linkedin.com/posts/piyush-sachdeva_10weeksofcloudops-devops-devopscommunity-activity-7107399700319735810-86H2?utm_source=share&utm_medium=member_android
+
+Backend + Cloud + DevOps(Nodejs on EKS, monitoring with promotheus and Grafana)
+
+https://www.linkedin.com/posts/sridhar-modalavalasa-12b492173_10weeksofcloudops-10weeksofcloudops-awscommunity-activity-7086342760265383937-Z2_p?utm_source=share&utm_medium=member_android
+
+Promotheus and Grafana using Ansible
+
+https://github.com/Ameer-clk/monitoring-iinerds

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ping
+  template:
+    metadata:
+      labels:
+        app: ping
+    spec:
+      containers:
+      - name: debugging-container
+        image: busybox
+        command: ["/bin/sh", "-c", "trap : TERM INT; sleep infinity"]
+      restartPolicy: Always

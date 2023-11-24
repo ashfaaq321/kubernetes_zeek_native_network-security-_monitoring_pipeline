@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: logstash
+  name: logstash
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: bitnami/logstash:7.17.15-debian-11-r0
+        volumeMounts:
+        - name: logstash-conf
+          mountPath: /usr/share/logstash/pipeline/
+      volumes:
+      - name: logstash-conf
+        configMap:
+          name: logstash
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash
+data:
+  logstash.conf: |
+    input {
+      kafka {
+        consumer_restart_on_error => true
+        consumer_threads => 2
+        group_id => "elk"
+        topic_id => "test002"
+        type => "application-log"
+        zk_connect => "zoo1:2181"
+      }
+    }
+
+    filter {
+      if [type] == "application-log" {
+        ruby {
+          init => "@kname = ['host', 'level','logId','business','c_time','http_host','user_agent','request_uri','post','client_ip','local_ip','func','user_id','msg']"
+          code => "event.append(Hash[@kname.zip(event['message'].split('-==-'))])"
+        }
+        mutate {
+          remove_field => [ "message" ]
+        }
+      }
+    }
+
+    output {
+      if [type] == "application-log" {
+        elasticsearch {
+          action => "index"
+          flush_size => 100
+          hosts => ["elasticsearch"]
+          idle_flush_time => 1
+          index => "application-log-%{+YYYY.MM.dd}"
+          manage_template => true
+          retry_max_interval => 2
+          timeout => 2
+          workers => 20
+          template => "/op/op-logstash/conf/.template/shop-waiter-v2.json"
+          template_name => "application-log"
+          template_overwrite => true
+        }
+      }
+    }

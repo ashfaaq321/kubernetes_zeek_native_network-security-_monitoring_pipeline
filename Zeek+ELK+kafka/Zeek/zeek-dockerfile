@@ -1,0 +1,73 @@
+# Use the zeek/zeek:latest base image
+FROM zeek/zeek:latest
+
+# Update the package repository and install net-tools
+RUN apt-get update && apt-get install -y net-tools
+
+# Cleanup package cache to reduce image size
+RUN apt-get clean
+
+# Create a directory for storing Zeek logs
+RUN mkdir -p /usr/local/zeek/logs
+
+# Add Zeek configuration for capturing traffic from "MyCIDRRange"
+RUN echo 'redef capture_filters += {' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    ["MyCIDRRange"] = "net 10.244.0.0/16";' >> /usr/local/zeek/etc/local.zeek
+RUN echo '};' >> /usr/local/zeek/etc/local.zeek
+
+# Create a Zeek configuration file to specify log locations
+RUN echo "Log::default_rotation_interval = 1 day" >> /usr/local/zeek/etc/zeekctl.cfg
+RUN echo "Log::default_disk_space = 1GB" >> /usr/local/zeek/etc/zeekctl.cfg
+RUN echo "Log::writer = Log::WRITER_ASCII" >> /usr/local/zeek/etc/zeekctl.cfg
+
+# Enable the default log file settings
+RUN echo "@load frameworks/logging/writers/ascii" >> /usr/local/zeek/etc/local.zeek
+
+# Specify log rotation settings
+RUN echo "LogRotationInterval = 3600" >> /usr/local/zeek/etc/local.zeek
+RUN echo "LogExpireInterval = 1 day" >> /usr/local/zeek/etc/local.zeek
+
+# Define log writers for specific log files
+RUN echo "Log::default_rotation_interval = 1 day" >> /usr/local/zeek/etc/local.zeek
+RUN echo "Log::default_disk_space = 1GB" >> /usr/local/zeek/etc/local.zeek
+
+# Enable the logs you want to generate
+RUN echo "@load protocols/conn/conn" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/http/http" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/packet-filter" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/ssl" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/ssh" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/mysql" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/dns" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/dhcp" >> /usr/local/zeek/etc/local.zeek
+RUN echo "@load protocols/ntp" >> /usr/local/zeek/etc/local.zeek
+
+# Customize the log file paths if needed
+RUN echo "redef Log::default_dir = \"/usr/local/zeek/logs\";" >> /usr/local/zeek/etc/local.zeek
+RUN echo "redef Log::default_prefix = \"zeek\";" >> /usr/local/zeek/etc/local.zeek
+
+# Enable specific log streams
+RUN echo 'event zeek_init() {' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(Conn::LOG, [$columns=Conn::LOG_COLS, $path="conn.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(HTTP::LOG, [$columns=HTTP::LOG_COLS, $path="http.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(PacketFilter::LOG, [$columns=PacketFilter::LOG_COLS, $path="packet_filter.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(SSL::LOG, [$columns=SSL::LOG_COLS, $path="ssl.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(SSH::LOG, [$columns=SSH::LOG_COLS, $path="ssh.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(MySQL::LOG, [$columns=MySQL::LOG_COLS, $path="mysql.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(DNS::LOG, [$columns=DNS::LOG_COLS, $path="dns.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(DHCP::LOG, [$columns=DHCP::LOG_COLS, $path="dhcp.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '    Log::create_stream(NTP::LOG, [$columns=NTP::LOG_COLS, $path="ntp.log"]);' >> /usr/local/zeek/etc/local.zeek
+RUN echo '}' >> /usr/local/zeek/etc/local.zeek
+
+# Create an entry point script
+RUN echo "#!/bin/bash" > /usr/local/zeek/entrypoint.sh
+RUN echo "/usr/local/zeek/bin/zeekctl deploy" >> /usr/local/zeek/entrypoint.sh
+RUN echo "/usr/local/zeek/bin/zeekctl start" >> /usr/local/zeek/entrypoint.sh
+RUN echo "tail -f /dev/null" >> /usr/local/zeek/entrypoint.sh
+
+# Make the entry point script executable
+RUN chmod +x /usr/local/zeek/entrypoint.sh
+
+# Set the entry point
+ENTRYPOINT ["/usr/local/zeek/entrypoint.sh"]
+

@@ -1,0 +1,90 @@
+# Use the zeek/zeek:latest base image
+FROM zeek/zeek:latest
+
+# Update the package repository and install net-tools
+RUN apt-get update && \
+    apt-get install -y net-tools && \
+    apt-get clean
+
+# Create directories and configuration files
+RUN mkdir -p /usr/local/zeek/logs && \
+    echo '[zeek]' > /usr/local/zeek/etc/node.cfg && \
+    echo 'type=standalone' >> /usr/local/zeek/etc/node.cfg && \
+    echo 'host=localhost' >> /usr/local/zeek/etc/node.cfg && \
+    echo 'interface=eth1' >> /usr/local/zeek/etc/node.cfg && \
+    echo '10.244.0.0/16 Kubernetes' > /usr/local/zeek/etc/networks.cfg && \
+    touch /usr/local/zeek/etc/default.cfg && \
+    echo 'LogRotationInterval = 3600' > /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'LogExpireInterval = 0' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'StatsLogEnable = 1' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'StatsLogExpireInterval = 0' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'StatusCmdShowAll = 0' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'CrashExpireInterval = 0' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'SitePolicyScripts = local.zeek' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'LogDir = /usr/local/zeek/logs' >> /usr/local/zeek/etc/zeekctl.cfg && \
+    echo 'SpoolDir = /usr/local/zeek/spool' >> /usr/local/zeek/etc/zeekctl.cfg
+
+# Customize the log file paths
+RUN echo "redef Log::default_dir = \"/usr/local/zeek/logs\";" >> /usr/local/zeek/etc/local.zeek && \
+    echo "redef Log::default_prefix = \"zeek\";" >> /usr/local/zeek/etc/local.zeek
+
+# Enable module loading
+RUN echo '@load base/protocols/conn' \
+    '@load base/frameworks/logging/writers/ascii' \
+    '@load base/protocols/http' \
+    '@load base/protocols/dns' \
+    '@load base/protocols/ssl' \
+    '@load base/protocols/ssh' \
+    '@load base/protocols/mysql' \
+    '@load base/protocols/dhcp' \
+    '@load base/protocols/ntp' \
+    '@load misc/loaded-scripts' \
+    '@load tuning/defaults' \
+    '@load misc/capture-loss' \
+    '@load misc/stats' \
+    '@load misc/scan' \
+    '@load misc/detect-traceroute' \
+    '@load frameworks/software/vulnerable' \
+    '@load frameworks/software/version-changes' \
+    '@load protocols/ftp/software' \
+    '@load protocols/smtp/software' \
+    '@load protocols/ssh/software' \
+    '@load protocols/http/software' \
+    '@load protocols/conn/known-hosts' \
+    '@load protocols/conn/known-services' \
+    '@load protocols/ssl/known-certs' \
+    '@load protocols/ssl/validate-certs' \
+    '@load protocols/http/detect-sqli' \
+    '@load frameworks/files/hash-all-files' \
+    '@load frameworks/files/detect-MHR' \
+    '@load policy/tuning/json-logs' >> /usr/local/zeek/etc/local.zeek
+
+# Enable specific log streams
+RUN echo '@load frameworks/logging/writers/ascii' \
+    'event zeek_init() {' \
+    '    Log::create_stream(Conn::LOG, [$columns=Conn::LOG_COLS, $path="conn.log"]);' \
+    '    Log::create_stream(HTTP::LOG, [$columns=HTTP::LOG_COLS, $path="http.log"]);' \
+    '    Log::create_stream(PacketFilter::LOG, [$columns=PacketFilter::LOG_COLS, $path="packet_filter.log"]);' \
+    '    Log::create_stream(SSL::LOG, [$columns=SSL::LOG_COLS, $path="ssl.log"]);' \
+    '    Log::create_stream(SSH::LOG, [$columns=SSH::LOG_COLS, $path="ssh.log"]);' \
+    '    Log::create_stream(MySQL::LOG, [$columns=MySQL::LOG_COLS, $path="mysql.log"]);' \
+    '    Log::create_stream(DNS::LOG, [$columns=DNS::LOG_COLS, $path="dns.log"]);' \
+    '    Log::create_stream(DHCP::LOG, [$columns=DHCP::LOG_COLS, $path="dhcp.log"]);' \
+    '    Log::create_stream(NTP::LOG, [$columns=NTP::LOG_COLS, $path="ntp.log"]);' \
+    '}' >> /usr/local/zeek/etc/local.zeek
+
+# Create an entry point script
+RUN echo '#!/bin/bash' > /usr/local/zeek/entrypoint.sh \
+    && echo '/usr/local/zeek/bin/zeekctl deploy' >> /usr/local/zeek/entrypoint.sh \
+    && echo '/usr/local/zeek/bin/zeekctl start' >> /usr/local/zeek/entrypoint.sh \
+    && echo 'tail -f /dev/null' >> /usr/local/zeek/entrypoint.sh
+
+# Make the entry point script executable
+RUN chmod +x /usr/local/zeek/entrypoint.sh
+
+# Expose the default Zeek network interface
+EXPOSE 47760/tcp
+
+# Set the entry point
+ENTRYPOINT ["/usr/local/zeek/entrypoint.sh"]
+
