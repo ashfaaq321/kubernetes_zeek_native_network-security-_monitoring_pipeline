@@ -1,0 +1,49 @@
+---
+- name: Configure webservers
+  hosts: all
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Install ufw
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - ufw
+
+    - name: Set logging
+      community.general.ufw:
+        logging: on
+
+    - name: deny everything
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+    - name: Allow port 22
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: '22'
+
+#    - name: Allow port 8080
+#      community.general.ufw:
+#        state: enabled
+#        proto: tcp
+#        rule: allow
+#        port: '8080'
+
+    - name: Start ssh service
+      service:
+        name: ssh
+        enabled: true
+        state: started
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: true
+        state: started
+

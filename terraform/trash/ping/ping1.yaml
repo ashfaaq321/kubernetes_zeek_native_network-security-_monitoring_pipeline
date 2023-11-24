@@ -1,0 +1,46 @@
+---
+- name: Configure webservers
+  hosts: all
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Install ufw
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - ufw
+
+    - name: Set logging
+      community.general.ufw:
+        logging: on
+
+    - name: deny everything and enable UFW
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+    - name: Allow port 22 and enable UFW
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: '22'
+
+    - name: Allow loopback for Libreddit (port 8080)
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: '8080'
+        from: 127.0.0.1
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: true
+        state: started
+
+    - name: Start Libreddit on loopback
+      ansible.builtin.command: libreddit -b 127.0.0.1 -p 8080

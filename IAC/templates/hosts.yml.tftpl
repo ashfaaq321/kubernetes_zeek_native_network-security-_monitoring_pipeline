@@ -1,0 +1,7 @@
+[bullseye_loadbalance]
+%{ for vm in loadbalance_vms ~}
+${vm.name} ansible_host=${vm.ip} ansible_user=root
+%{ endfor ~}
+
+
+

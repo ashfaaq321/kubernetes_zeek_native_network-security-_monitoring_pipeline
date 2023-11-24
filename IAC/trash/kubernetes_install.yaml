@@ -1,0 +1,63 @@
+---
+- name: Configure webservers
+  hosts: [bullseye_loadbalance_0]
+  remote_user: root
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: safe
+
+    - name: Install git, zip, nginx, wget, curl & other utils
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - git
+          - nginx
+          - wget
+          - curl
+          - gpg
+          - ca-certificates
+          - zip
+          - python3-pip
+          - virtualenv
+          - ufw
+          - fail2ban
+          - dnsutils
+          - bind9
+          - python3-setuptools
+          - apt-transport-https
+
+- name: Configure Kubernetes APT repository
+  hosts: [bullseye_loadbalance_0]
+  remote_user: root
+
+  tasks:
+    - name: Create Kubernetes APT keyring directory
+      become: yes
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+
+    - name: Check if Kubernetes APT repository keyring file exists
+      stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: keyring_file
+
+    - name: Check if Kubernetes APT repository list file exists
+      become: yes
+      stat:
+        path: /etc/apt/sources.list.d/kubernetes.list
+      register: kubernetes_list_file
+
+    - name: Add Kubernetes APT repository key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      when: keyring_file.stat.exists == false
+
+    - name: Add Kubernetes APT repository to sources list
+      shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      when: kubernetes_list_file.stat.exists == false

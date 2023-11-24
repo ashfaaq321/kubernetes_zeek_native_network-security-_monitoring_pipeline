@@ -1,0 +1,34 @@
+---
+- name: Set up kubeconfig
+  hosts: all
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Check if kubeconfig is already set up
+      stat:
+        path: "{{ ansible_env.HOME }}/.kube/config"
+      register: kubeconfig_stat
+
+    - name: Set up kubeconfig if not already set up
+      block:
+        - name: Create .kube directory
+          file:
+            path: "{{ ansible_env.HOME }}/.kube"
+            state: directory
+
+        - name: Copy kubeconfig file
+          copy:
+            src: "/etc/kubernetes/admin.conf"
+            dest: "{{ ansible_env.HOME }}/.kube/config"
+            remote_src: yes
+          when: not kubeconfig_stat.stat.exists
+
+        - name: Set ownership of kubeconfig file
+          file:
+            path: "{{ ansible_env.HOME }}/.kube/config"
+            owner: "{{ ansible_env.USER }}"
+            group: "{{ ansible_env.USER }}"
+            mode: '0600'
+          when: not kubeconfig_stat.stat.exists
+      become: true

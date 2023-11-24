@@ -1,0 +1,73 @@
+- name: Install and Configure cri-dockerd
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Download source file of cri-dockerd
+      ansible.builtin.get_url:
+        url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.4/cri-dockerd_0.3.4.3-0.debian-bullseye_amd64.deb
+        dest: /tmp/cri-dockerd
+
+    - name: Ensure cri-dockerd directory exists
+      ansible.builtin.file:
+        path: /usr/local/bin
+        state: directory
+
+    - name: Copy cri-dockerd to /usr/local/bin
+      ansible.builtin.copy:
+        src: /tmp/cri-dockerd
+        dest: /usr/local/bin/cri-dockerd
+        mode: '0755'
+        remote_src: yes
+
+    - name: Ensure cri-dockerd symlink exists
+      ansible.builtin.file:
+        path: /usr/share/bin
+        state: directory
+
+    - name: Create symlink to libreddit
+      ansible.builtin.file:
+        src: /usr/local/bin/cri-dockerd
+        dest: /usr/share/bin/cri-dockerd
+        state: link
+
+    - name: Ensure systemd directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system
+        state: directory
+
+    - name: Generate systemd service file from template
+      ansible.builtin.template:
+        src: cri-docker.service.j2  # Jinja2 template content for systemd service
+        dest: /etc/systemd/system/cri-docker.service
+      notify: Start cri-dockerd service
+
+    - name: Generate systemd socket file from template
+      ansible.builtin.template:
+        src: cri-docker.socket.j2  # Jinja2 template content for systemd socket
+        dest: /etc/systemd/system/cri-docker.socket
+
+    - name: Reload systemd after creating service and socket files
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Start and enable cri-dockerd service
+      ansible.builtin.service:
+        name: cri-dockerd
+        state: started
+        enabled: yes
+    - name: Reload systemd and start cri-docker service and socket
+      systemd:
+        daemon_reload: yes
+        state: restarted
+        name: "{{ item }}"
+      loop:
+        - cri-docker.service
+        - cri-docker.socket
+
+  handlers:
+    - name: Start cri-dockerd service
+      ansible.builtin.service:
+        name: cri-dockerd
+        state: started
+

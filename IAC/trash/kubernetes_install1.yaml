@@ -1,0 +1,43 @@
+- name: Configure Kubernetes APT repository
+  hosts: [bullseye_loadbalance_0]
+  remote_user: root
+
+  tasks:
+    - name: Install required packages
+      become: yes
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+        state: present
+
+    - name: Create Kubernetes APT keyring directory
+      become: yes
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+
+    - name: Check if Kubernetes APT repository keyring file exists
+      stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: keyring_file
+
+    - name: Check if Kubernetes APT repository list file exists
+      become: yes
+      stat:
+        path: /etc/apt/sources.list.d/kubernetes.list
+      register: kubernetes_list_file
+
+    - name: Add Kubernetes APT repository key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      when: keyring_file.stat.exists == false
+
+    - name: Add Kubernetes APT repository to sources list
+      shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      when: kubernetes_list_file.stat.exists == false
+
+    - name: Update APT repositories
+      apt:
+        update_cache: yes

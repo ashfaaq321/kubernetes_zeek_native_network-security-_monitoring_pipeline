@@ -1,0 +1,41 @@
+---
+- name: Install Go 1.21.0 on Linux
+  hosts: all
+  become: yes  # Run tasks as sudo
+
+  tasks:
+    - name: Download Go archive
+      get_url:
+        url: https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
+        dest: /tmp/go1.21.0.linux-amd64.tar.gz
+
+    - name: Extract Go archive if not already extracted
+      unarchive:
+        src: /tmp/go1.21.0.linux-amd64.tar.gz
+        dest: /usr/local
+        remote_src: yes
+        creates: /usr/local/go
+
+    - name: Set Go environment variables
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/usr/local/go/bin'
+        state: present
+
+    - name: Load Go environment variables for the current session
+      shell: source /etc/profile
+      args:
+        executable: /bin/bash
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/go/bin"
+      changed_when: false
+
+    - name: Display Go version
+      command: /usr/local/go/bin/go version
+      register: go_version
+      changed_when: false
+      failed_when: false
+
+    - debug:
+        var: go_version.stdout_lines
+      when: go_version.rc == 0

@@ -1,0 +1,370 @@
+---
+- name: Update Hostname and Hosts File
+  hosts: [bullseye_loadbalance_0]
+  become: yes
+
+  tasks:
+    - name: Set new hostname in /etc/hostname
+      lineinfile:
+        path: /etc/hostname
+        line: 'kmaster'
+      notify:
+        - apply hostname changes
+
+    - name: Update /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: '127.0.1.1 kmaster kmaster'
+        regexp: '^127.0.1.1 debian debian$'
+        state: absent
+      notify:
+        - apply hostname changes
+
+  handlers:
+    - name: apply hostname changes
+      command: hostnamectl set-hostname kmaster
+      async: 0
+      poll: 0
+
+    - name: Remove old hostname entry from /etc/hostname
+      replace:
+        path: /etc/hostname
+        regexp: '^debian$'
+        replace: ''
+        backup: yes
+
+    - name: Reboot if required
+      reboot:
+        post_reset_delay: 10
+        connect_timeout: 30
+        pre_reboot_delay: 0
+
+---
+- name: disable swap
+  hosts: [bullseye_loadbalance_0]
+
+  tasks:
+    - name: Disable swap permanently
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+.*)$'
+        replace: '# \1'
+
+---
+- name: Load modules
+  hosts: all
+
+  tasks:
+    - name: Load kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - br_netfilter
+        - overlay
+        - ip_vs
+        - ip_vs-rr
+        - ip_vs_wrr
+        - nf_conntrack
+
+    - name: Add sysctl
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_set: true
+        state: present
+        reload: true
+      loop:
+        - { key: net.bridge.bridge-nf-call-ip6tables, value: 1 }
+        - { key: net.bridge.bridge-nf-call-iptables, value: 1 }
+        - { key: net.ipv4.ip_forward, value: 1 }
+
+---
+- name: Configure webservers
+  hosts: [bullseye_loadbalance_0]
+  remote_user: root
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: safe
+
+    - name: Install git, zip, wget, curl & other utils
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - git
+          - wget
+          - curl
+          - gpg
+          - ca-certificates
+          - zip
+          - python3-pip
+          - virtualenv
+          - ufw
+          - fail2ban
+          - dnsutils
+          - python3-setuptools
+
+    - name: Create /etc/apt/keyrings dir
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        recurse: yes
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/debian buster stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        name: docker-ce
+        update_cache: yes
+
+    - name: Update apt and install docker-ce-cli
+      ansible.builtin.apt:
+        name: docker-ce-cli
+        update_cache: yes
+
+    - name: Update apt and install docker-buildx-plugin
+      ansible.builtin.apt:
+        name: docker-buildx-plugin
+        update_cache: yes
+
+    - name: Update apt and install docker-compose-plugin
+      ansible.builtin.apt:
+        name: docker-compose-plugin
+        update_cache: yes
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Set logging
+      community.general.ufw:
+        logging: "on"
+
+    - name: Allow port 22 and enable UFW
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: "22"
+
+    - name: Allow port 80
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "80"
+
+    - name: Allow port 443
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "443"
+
+    - name: Allow port 53
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "53"
+
+    - name: Allow port 6443
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "6443"
+
+    - name: Allow ports 2379-2380
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "2379:2380"
+
+    - name: Allow port 10250
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "10250"
+
+    - name: Allow port 10259
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "10259"
+
+    - name: Allow port 10257
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "10257"
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: yes
+        state: started
+
+---
+- name: Deploy cri-dockerd
+  hosts: [bullseye_loadbalance_0]
+  become: yes
+
+  tasks:
+    - name: Check if Go is installed
+      stat:
+        path: /usr/local/go/bin/go
+      register: go_installed
+      run_once: true
+
+    - name: Install Go
+      shell: |
+        wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+        sudo tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+      args:
+        executable: /bin/bash
+      when: go_installed.stat.exists == false
+
+    - name: Get installed Go version
+      command: /usr/local/go/bin/go version
+      register: go_version
+      changed_when: false
+      run_once: true
+
+    - name: Display installed Go version
+      debug:
+        var: go_version.stdout
+      run_once: true
+
+    - name: Clone cri-dockerd repository
+      git:
+        repo: https://github.com/Mirantis/cri-dockerd.git
+        dest: /src/cri-dockerd
+        single_branch: yes
+        version: master
+      # when: not ansible_check_mode and not ("~/cri-dockerd" is directory)
+
+    - name: Check if cri-dockerd is built
+      stat:
+        path: "/usr/local/bin/cri-dockerd"
+      register: cri_dockerd_built
+      # when: not ansible_check_mode
+
+    - name: Build cri-dockerd
+      shell: |
+        cd /src/cri-dockerd
+        make cri-dockerd
+        sudo install -o root -g root -m 0755 cri-dockerd /usr/local/bin/cri-dockerd
+        sudo install -o root -g root -m 0644 packaging/systemd/* /etc/systemd/system/
+        sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now cri-docker.socket
+      args:
+        executable: /bin/bash
+      when: not ansible_check_mode and cri_dockerd_built.stat.exists == false
+
+    - name: Enable cri-docker.socket
+      systemd:
+        name: cri-docker.socket
+        enabled: yes
+        state: started
+      when: not ansible_check_mode
+
+    - name: Check and start cri-docker service and socket if inactive
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - cri-docker.service
+        - cri-docker.socket
+      when: not ansible_check_mode
+
+- name: Configure Kubernetes APT repository
+  hosts: [bullseye_loadbalance_0]
+  remote_user: root
+
+  tasks:
+    - name: Create Kubernetes APT keyring directory
+      become: yes
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+
+    - name: Check if Kubernetes APT repository keyring file exists
+      stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: keyring_file
+
+    - name: Check if Kubernetes APT repository list file exists
+      become: yes
+      stat:
+        path: /etc/apt/sources.list.d/kubernetes.list
+      register: kubernetes_list_file
+
+    - name: Add Kubernetes APT repository key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      when: keyring_file.stat.exists == false
+
+    - name: Add Kubernetes APT repository to sources list
+      shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      when: kubernetes_list_file.stat.exists == false
+
+---
+- name: Configure Kubernetes Master Node
+  hosts: [bullseye_loadbalance_0]
+  become: yes
+
+  tasks:
+    - name: Check if Kubernetes master is already initialized
+      stat:
+        path: "{{ item }}"
+      register: kubeadm_status
+      loop:
+        - /etc/kubernetes/manifests/kube-apiserver.yaml
+        - /etc/kubernetes/manifests/kube-controller-manager.yaml
+        - /etc/kubernetes/manifests/kube-scheduler.yaml
+        - /etc/kubernetes/manifests/etcd.yaml
+        - /var/lib/etcd
+
+    - name: Display current status
+      debug:
+        var: kubeadm_status.results
+
+    - name: Pull Kubernetes container images
+      command: "sudo kubeadm config images pull --cri-socket 'unix:///var/run/cri-dockerd.sock' --kubernetes-version v1.28.1"
+      register: pull_images_output
+      when: kubeadm_status.results | map(attribute='stat.exists') | select('equalto', false) | list | length > 0
+
+    - name: Display output of 'Pull Kubernetes container images'
+      debug:
+        var: pull_images_output.stdout_lines
+      when: pull_images_output.changed
+
+    - name: Initialize Kubernetes master node
+      command: "sudo kubeadm init --cri-socket 'unix:///var/run/cri-dockerd.sock' --pod-network-cidr 10.244.0.0/16 --kubernetes-version 1.28.1 --node-name kmaster"
+      register: kubeadm_init_output
+      when: kubeadm_status.results | map(attribute='stat.exists') | select('equalto', false) | list | length > 0
+
+    - name: Display output of 'Initialize Kubernetes master node'
+      debug:
+        var: kubeadm_init_output.stdout_lines
+      when: kubeadm_init_output.changed

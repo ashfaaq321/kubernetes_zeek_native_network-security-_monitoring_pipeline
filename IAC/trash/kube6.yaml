@@ -1,0 +1,30 @@
+---
+- name: Download and Install Kubernetes package repository signing key
+  hosts: all
+  become: yes
+  gather_facts: yes  # This gathers facts about the system which can help optimize the playbook
+
+  tasks:
+    - name: Download Kubernetes package signing key if not exists
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+      register: keyring_stat
+      changed_when: false  # Do not consider this task as changed if the file already exists
+
+    - name: Download Kubernetes package signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        dest: /tmp/kubernetes-archive-keyring.gpg
+      when: keyring_stat.stat.exists == false  # Only download if the file doesn't exist
+
+    - name: Install the keyring if it was downloaded
+      ansible.builtin.shell: "mv /tmp/kubernetes-archive-keyring.gpg /etc/apt/keyrings/kubernetes-archive-keyring.gpg"
+      when: keyring_stat.stat.exists == false
+
+- name: Update apt cache
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes

@@ -1,0 +1,57 @@
+---
+- name: Install Go 1.21.0 on Linux
+  hosts: all
+  become: yes  # Run tasks as sudo
+
+  tasks:
+    - name: Check if Go is already installed
+      stat:
+        path: /usr/local/go
+      register: go_installed
+
+    - name: Download Go archive
+      get_url:
+        url: https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
+        dest: /tmp/go1.21.0.linux-amd64.tar.gz
+      when: go_installed.stat.exists == false
+
+    - name: Remove existing Go installation
+      file:
+        path: /usr/local/go
+        state: absent
+      when: go_installed.stat.exists == true
+
+    - name: Extract Go archive
+      unarchive:
+        src: /tmp/go1.21.0.linux-amd64.tar.gz
+        dest: /usr/local
+        remote_src: yes
+        creates: /usr/local/go
+      when: go_installed.stat.exists == false
+
+    - name: Set Go environment variables
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/usr/local/go/bin'
+        state: present
+      when: go_installed.stat.exists == false
+
+    - name: Load Go environment variables for the current session
+      shell: source /etc/profile
+      args:
+        executable: /bin/bash
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/go/bin"
+      changed_when: false
+      when: go_installed.stat.exists == false
+
+    - name: Verify Go installation
+      command: go version
+      register: go_version
+      ignore_errors: yes  # Ignore error to proceed with playbook
+      when: go_installed.stat.exists == false
+
+    - name: Display Go version
+      debug:
+        var: go_version.stdout_lines
+      when: go_installed.stat.exists == false

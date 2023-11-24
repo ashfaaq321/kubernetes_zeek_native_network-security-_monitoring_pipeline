@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2023 Aravinth Manivannan <realaravinth@batsense.net>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Deploy libreddit
+  hosts: bullseye_libreddit
+  remote_user: atm
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Create /etc/apt/keyrings dir
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        recurse: true
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/debian buster stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        name: docker-ce
+        update_cache: true
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Ensure docker group is present
+      ansible.builtin.group:
+        name: docker
+        state: present
+
+    - name: Add user atm to docker group
+      ansible.builtin.user:
+        name: atm
+        groups: docker,users,admin
+
+    - name: Deploy libreddit
+      ansible.builtin.docker_container:
+        name: libreddit
+        state: started
+        image: "spikecodes/libreddit"
+        pull: true
+        ports:
+          - "8080:8080"
+
+    - name: Allow port 8080
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "8080"

@@ -1,0 +1,32 @@
+---
+- name: Configure webservers
+  hosts: all
+  remote_user: root
+
+  tasks:
+
+    - name: Install git, zip, nginx, wget, curl & other utils
+      ansible.builtin.apt:
+        update_cache: true
+        pkg:
+          - ufw
+
+
+    - name: Set logging
+      community.general.ufw:
+        logging: "on"
+
+    - name: Allow port 22 and enable UFW
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: "22"
+
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: true
+        state: started
+

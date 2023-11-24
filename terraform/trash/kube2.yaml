@@ -1,0 +1,52 @@
+---
+- name: Setup Kubernetes repository and install packages
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt package index and install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg
+
+    - name: Create directory for Kubernetes apt repository configuration
+      file:
+        path: /etc/apt/sources.list.d
+        state: directory
+
+    - name: Prepare Kubernetes repository content
+      set_fact:
+        kubernetes_repo_content: "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Write Kubernetes repository content to file
+      copy:
+        content: "{{ kubernetes_repo_content }}"
+        dest: /etc/apt/sources.list.d/kubernetes.list
+      when: kubernetes_repo_content is defined
+
+    - name: Update apt package index and install Kubernetes packages
+      apt:
+        update_cache: yes
+        name: "{{ item }}"
+        state: present
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Hold Kubernetes package versions
+      apt:
+        name: "{{ item }}"
+        state: present  # Use "present" instead of "hold"
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+

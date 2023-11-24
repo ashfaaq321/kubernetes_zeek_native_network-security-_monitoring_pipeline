@@ -1,0 +1,49 @@
+---
+- name: Install Cilium CLI
+  hosts: all
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Get Cilium CLI version
+      shell: curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+      register: cilium_cli_version
+
+    - name: Determine CLI architecture
+      set_fact:
+        cli_arch: "{{ 'arm64' if 'aarch64' in ansible_architecture else 'amd64' }}"
+
+    # Alternatively, use the 'arch' command if 'ansible_architecture' is not available
+    # - name: Determine CLI architecture
+    #   set_fact:
+    #     cli_arch: "{{ 'arm64' if 'aarch64' in ansible_cmdline else 'amd64' }}"
+
+    - name: Download Cilium CLI
+      get_url:
+        url: "https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version.stdout }}/cilium-linux-{{ cli_arch }}.tar.gz"
+        dest: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz"
+        checksum: "sha256:https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version.stdout }}/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+      args:
+        force_basic_auth: yes
+
+    - name: Verify checksum
+      shell: "sha256sum --check /tmp/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+      args:
+        chdir: "/tmp"
+      register: checksum_result
+      ignore_errors: true
+
+    - name: Extract Cilium CLI
+      command: "tar xzvf /tmp/cilium-linux-{{ cli_arch }}.tar.gz -C /usr/local/bin"
+      args:
+        creates: "/usr/local/bin/cilium"
+
+    - name: Clean up downloaded files
+      file:
+        path: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz"
+        state: absent
+
+    - name: Clean up checksum file
+      file:
+        path: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+        state: absent

@@ -1,0 +1,41 @@
+---
+- name: Install Cilium CLI
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Set Cilium CLI version and architecture
+      set_fact:
+        CILIUM_CLI_VERSION: "{{ lookup('url', 'https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt') }}"
+        CLI_ARCH: "amd64"
+      when: "ansible_architecture == 'x86_64'"
+
+    - name: Determine architecture for ARM64
+      set_fact:
+        CLI_ARCH: "arm64"
+      when: "ansible_architecture == 'aarch64'"
+
+    - name: Download Cilium CLI archive
+      get_url:
+        url: "https://github.com/cilium/cilium-cli/releases/download/{{ CILIUM_CLI_VERSION }}/cilium-linux-{{ CLI_ARCH }}.tar.gz"
+        dest: "/tmp/cilium-linux-{{ CLI_ARCH }}.tar.gz"
+
+    - name: Download Cilium CLI archive checksum
+      get_url:
+        url: "https://github.com/cilium/cilium-cli/releases/download/{{ CILIUM_CLI_VERSION }}/cilium-linux-{{ CLI_ARCH }}.tar.gz.sha256sum"
+        dest: "/tmp/cilium-linux-{{ CLI_ARCH }}.tar.gz.sha256sum"
+
+    - name: Verify checksum
+      command: "sha256sum --check /tmp/cilium-linux-{{ CLI_ARCH }}.tar.gz.sha256sum"
+      args:
+        chdir: "/tmp"
+      ignore_errors: yes
+
+    - name: Extract and install Cilium CLI
+      command: "tar xzvf /tmp/cilium-linux-{{ CLI_ARCH }}.tar.gz -C /usr/local/bin/"
+      ignore_errors: yes
+      register: cilium_install_result
+
+    - name: Display install status
+      debug:
+        var: cilium_install_result

@@ -1,0 +1,67 @@
+---
+- name: Configure Kubernetes Master Node
+  hosts: [bullseye_loadbalance_1]
+  become: yes
+
+  tasks:
+    - name: Check if Kubernetes master is already initialized
+      stat:
+        path: "{{ item }}"
+      register: kubeadm_status
+      loop:
+        - /etc/kubernetes/manifests/kube-apiserver.yaml
+        - /etc/kubernetes/manifests/kube-controller-manager.yaml
+        - /etc/kubernetes/manifests/kube-scheduler.yaml
+        - /etc/kubernetes/manifests/etcd.yaml
+        - /var/lib/etcd
+
+    - name: Display current status
+      debug:
+        var: kubeadm_status.results
+
+    - name: Pull Kubernetes container images
+      command: "sudo kubeadm config images pull --cri-socket 'unix:///var/run/cri-dockerd.sock' --kubernetes-version v1.28.1"
+      register: pull_images_output
+      when: kubeadm_status.results | map(attribute='stat.exists') | select('equalto', false) | list | length > 0
+
+    - name: Display output of 'Pull Kubernetes container images'
+      debug:
+        var: pull_images_output.stdout_lines
+      when: pull_images_output.changed
+
+    - name: Initialize Kubernetes master node
+      command: "sudo kubeadm init --cri-socket 'unix:///var/run/cri-dockerd.sock' --pod-network-cidr 10.244.0.0/16 --kubernetes-version 1.28.1 --node-name kmaster"
+      register: kubeadm_init_output
+      when: kubeadm_status.results | map(attribute='stat.exists') | select('equalto', false) | list | length > 0
+
+    - name: Display output of 'Initialize Kubernetes master node'
+      debug:
+        var: kubeadm_init_output.stdout_lines
+
+    - name: Check if kubeconfig is already set up
+      stat:
+        path: "{{ ansible_env.HOME }}/.kube/config"
+      register: kubeconfig_status
+
+    - name: Display current kubeconfig status
+      debug:
+        var: kubeconfig_status.results
+
+    - name: Set up kubeconfig for the current user
+      hosts: localhost
+      gather_facts: false
+      tasks:
+        - name: Copy kubeconfig to user's home directory
+          copy:
+            src: /etc/kubernetes/admin.conf
+            dest: "{{ ansible_env.HOME }}/.kube/config"
+            remote_src: yes
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: '0600'
+          when: kubeconfig_status.stat.exists == false
+
+    - name: Display output of 'Set up kubeconfig for the current user'
+      debug:
+        msg: "Kubeconfig is already set up, skipping the task."
+      when: kubeconfig_status.stat.exists == true

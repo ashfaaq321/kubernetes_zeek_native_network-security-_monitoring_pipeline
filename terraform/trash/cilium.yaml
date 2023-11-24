@@ -1,0 +1,45 @@
+---
+- name: Install Cilium CLI
+  hosts: all
+  become: yes  # Use sudo to execute commands as a superuser
+
+  tasks:
+    - name: Get Cilium CLI version
+      shell: curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+      register: cilium_cli_version
+      changed_when: false
+
+    - name: Determine CPU architecture
+      shell: uname -m
+      register: cpu_arch
+      changed_when: false
+
+    - name: Set CLI architecture
+      set_fact:
+        cli_arch: "amd64"
+      when: cpu_arch.stdout == "aarch64"
+      changed_when: false
+
+    - name: Download Cilium CLI
+      shell: >
+        curl -L --fail --remote-name-all
+        https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version.stdout }}/cilium-linux-{{ cli_arch }}.tar.gz{,.sha256sum}
+      args:
+        chdir: /tmp
+      changed_when: false
+
+    - name: Verify sha256sum
+      shell: sha256sum --check cilium-linux-{{ cli_arch }}.tar.gz.sha256sum
+      args:
+        chdir: /tmp
+      changed_when: false
+
+    - name: Extract and install Cilium CLI
+      shell: sudo tar xzvf cilium-linux-{{ cli_arch }}.tar.gz -C /usr/local/bin
+      args:
+        chdir: /tmp
+      changed_when: false
+
+    - name: Clean up downloaded files
+      shell: rm /tmp/cilium-linux-{{ cli_arch }}.tar.gz{,.sha256sum}
+      changed_when: false

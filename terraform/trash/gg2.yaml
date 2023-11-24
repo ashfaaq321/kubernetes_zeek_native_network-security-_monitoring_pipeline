@@ -1,0 +1,11 @@
+---
+- name: Deploy cri-dockerd
+  hosts: all
+  become: yes
+  tasks:
+    - name: Clone a repo with separate git directory
+      ansible.builtin.git:
+        repo: https://github.com/Mirantis/cri-dockerd.git
+        dest: /~/cri-dockerd
+        separate_git_dir: /src/cri-docker.git
+

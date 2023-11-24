@@ -1,0 +1,38 @@
+---
+- name: Download and Install Kubernetes package repository signing key
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Download Kubernetes package signing key if not exists
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        dest: /tmp/kubernetes-archive-keyring.gpg
+      when: keyring_stat.stat.exists == false
+
+    - name: Install the keyring if it was downloaded
+      ansible.builtin.copy:
+        src: /tmp/kubernetes-archive-keyring.gpg
+        dest: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+      when: keyring_stat.stat.exists == false
+
+    - name: Import Kubernetes GPG key
+      ansible.builtin.apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        state: present
+
+- name: Add Kubernetes APT repository
+  hosts: all
+  become: yes
+  tasks:
+    - name: Add Kubernetes APT repository source
+      ansible.builtin.shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+- name: Update apt cache
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes

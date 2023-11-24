@@ -1,0 +1,170 @@
+---
+- name: Configure Servers, Install Docker, and Set Up Kubernetes
+  hosts: all
+  remote_user: root
+  become: yes
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: safe
+
+    - name: Install necessary packages
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - git
+          - nginx
+          - wget
+          - curl
+          - gpg
+          - zip
+          - python3-pip
+          - virtualenv
+          - ufw
+          - fail2ban
+          - dnsutils
+          - bind9
+          - python3-setuptools
+
+    - name: Create /etc/apt/keyrings dir
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        recurse: yes
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/debian buster stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        name: docker-ce
+        update_cache: yes
+
+    - name: Update apt and install docker-ce-cli
+      ansible.builtin.apt:
+        name: docker-ce-cli
+        update_cache: yes
+
+    - name: Update apt and install docker-buildx-plugin
+      ansible.builtin.apt:
+        name: docker-buildx-plugin
+        update_cache: yes
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Set logging
+      community.general.ufw:
+        logging: "on"
+
+    - name: Allow port 22 and enable UFW
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: "22"
+
+    - name: Allow port 80
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "80"
+
+    - name: Allow port 443
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "443"
+
+    - name: Allow port 53
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "53"
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: yes
+        state: started
+
+    - name: Download and Install Kubernetes package repository signing key
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+      register: keyring_stat
+      changed_when: false
+
+    - name: Download Kubernetes package signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        dest: /tmp/kubernetes-archive-keyring.gpg
+      when: keyring_stat.stat.exists == false
+
+    - name: Install the keyring if it was downloaded
+      ansible.builtin.shell: "mv /tmp/kubernetes-archive-keyring.gpg /etc/apt/keyrings/kubernetes-archive-keyring.gpg"
+      when: keyring_stat.stat.exists == false
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Setup Kubernetes repository and install packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - gnupg
+        state: present
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Create directory for Kubernetes apt repository configuration
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d
+        state: directory
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Prepare Kubernetes repository content
+      ansible.builtin.set_fact:
+        kubernetes_repo_content: "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Write Kubernetes repository content to file
+      ansible.builtin.copy:
+        content: "{{ kubernetes_repo_content }}"
+        dest: /etc/apt/sources.list.d/kubernetes.list
+      when: kubernetes_repo_content is defined
+
+    - name: Update apt package index and install Kubernetes packages
+      ansible.builtin.apt:
+        update_cache: yes
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+

@@ -1,0 +1,26 @@
+---
+- name: Install Kubernetes components
+  hosts: [bullseye_loadbalance_0]
+  become: true
+
+  tasks:
+    # Update the package list
+    - name: Update package list
+      apt:
+        update_cache: yes
+
+    # Install Kubernetes components
+    - name: Install kubelet
+      apt:
+        name: kubelet
+        state: present
+
+    - name: Install kubeadm
+      apt:
+        name: kubeadm
+        state: present
+
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: present

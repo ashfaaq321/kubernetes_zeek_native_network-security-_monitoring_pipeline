@@ -1,0 +1,153 @@
+---
+- name: Configure webservers
+  hosts: all
+  remote_user: root
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: safe
+
+    - name: Install git, zip, nginx, wget, curl & other utils
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - git
+          - nginx
+          - wget
+          - curl
+          - gpg
+          - ca-certificates
+          - zip
+          - python3-pip
+          - virtualenv
+          - ufw
+          - fail2ban
+          - dnsutils
+          - bind9
+          - python3-setuptools
+
+    - name: Create /etc/apt/keyrings dir
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        recurse: yes
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/debian buster stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        name: docker-ce
+        update_cache: yes
+
+    - name: Update apt and install docker-ce-cli
+      ansible.builtin.apt:
+        name: docker-ce-cli
+        update_cache: yes
+
+    - name: Update apt and install docker-buildx-plugin
+      ansible.builtin.apt:
+        name: docker-buildx-plugin
+        update_cache: yes
+
+    - name: Update apt and install docker-compose-plugin
+      ansible.builtin.apt:
+        name: docker-compose-plugin
+        update_cache: yes
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Set logging
+      community.general.ufw:
+        logging: "on"
+
+    - name: Allow port 22 and enable UFW
+      community.general.ufw:
+        state: enabled
+        rule: allow
+        proto: tcp
+        port: "22"
+
+    - name: Allow port 80
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "80"
+
+    - name: Allow port 443
+      community.general.ufw:
+        state: enabled
+        proto: tcp
+        rule: allow
+        port: "443"
+
+    - name: Allow port 53
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "53"
+
+    - name: Allow port 6443
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "6443"
+
+    - name: Allow port 2379
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "2379"
+
+    - name: Allow port 2380
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "2380"
+
+    - name: Allow port 10250
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "10250"
+
+    - name: Allow port 10259
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "10259"
+
+    - name: Allow port 10257
+      community.general.ufw:
+        state: enabled
+        proto: udp
+        rule: allow
+        port: "10257"
+
+    - name: Enable and start ufw service
+      ansible.builtin.service:
+        name: ufw
+        enabled: yes
+        state: started
+

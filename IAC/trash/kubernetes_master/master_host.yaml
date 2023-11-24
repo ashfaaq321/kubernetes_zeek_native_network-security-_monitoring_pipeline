@@ -1,0 +1,40 @@
+---
+- name: Update Hostname and Hosts File
+  hosts: [bullseye_loadbalance_0]
+  become: yes
+
+  tasks:
+    - name: Set new hostname in /etc/hostname
+      lineinfile:
+        path: /etc/hostname
+        line: 'kmaster'
+      notify:
+        - apply hostname changes
+
+    - name: Update /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: '127.0.1.1 kmaster kmaster'
+        regexp: '^127.0.1.1 debian debian$'
+        state: absent
+      notify:
+        - apply hostname changes
+
+  handlers:
+    - name: apply hostname changes
+      command: hostnamectl set-hostname kmaster
+      async: 0
+      poll: 0
+
+    - name: Remove old hostname entry from /etc/hostname
+      replace:
+        path: /etc/hostname
+        regexp: '^debian$'
+        replace: ''
+        backup: yes
+
+    - name: Reboot if required
+      reboot:
+        post_reset_delay: 10
+        connect_timeout: 30
+        pre_reboot_delay: 0

@@ -1,0 +1,8 @@
+---
+- name: Shutdown machines
+  hosts: [bullseye_loadbalance,bullseye_app]
+  remote_user: root
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      community.general.shutdown:

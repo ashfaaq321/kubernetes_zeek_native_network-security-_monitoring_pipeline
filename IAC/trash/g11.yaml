@@ -1,0 +1,65 @@
+---
+- name: Deploy cri-dockerd
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Check if Go is installed
+      shell: "go version"
+      register: go_version
+      changed_when: false
+      ignore_errors: true
+      run_once: true
+
+    - name: Install Go
+      shell: |
+        wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+        sudo tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+      args:
+        executable: /bin/bash
+      when: go_version.rc != 0
+
+    - name: Display installed Go version
+      debug:
+        var: go_version.stdout
+      run_once: true
+
+    - name: Clone cri-dockerd repository
+      git:
+        repo: https://github.com/Mirantis/cri-dockerd.git
+        dest: ~/cri-dockerd
+        version: master
+      when: not ansible_check_mode and not ("~/cri-dockerd" is directory)
+
+    - name: Check if cri-dockerd is built
+      stat:
+        path: "/usr/local/bin/cri-dockerd"
+      register: cri_dockerd_built
+      when: not ansible_check_mode
+
+    - name: Build cri-dockerd
+      shell: |
+        cd ~/cri-dockerd
+        make cri-dockerd
+        sudo install -o root -g root -m 0755 cri-dockerd /usr/local/bin/cri-dockerd
+        sudo install -o root -g root -m 0644 packaging/systemd/* /etc/systemd/system/
+        sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now cri-docker.socket
+      args:
+        executable: /bin/bash
+      when: not ansible_check_mode and cri_dockerd_built.stat.exists == false
+
+    - name: Check if cri-dockerd service is running
+      command: systemctl is-active cri-docker.service
+      register: cri_dockerd_status
+      changed_when: false
+      ignore_errors: true
+      when: not ansible_check_mode
+
+    - name: Start cri-dockerd service
+      command: systemctl start cri-docker.service
+      become: true
+      when: not ansible_check_mode and cri_dockerd_status.stdout != "active"
+

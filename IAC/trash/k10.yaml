@@ -1,0 +1,28 @@
+---
+- name: Install Kubernetes components
+  hosts: [bullseye_loadbalance_0]
+  become: yes  # To execute tasks as root using sudo
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      become: yes
+
+    - name: Install kubelet, kubeadm, and kubectl
+      apt:
+        name: "{{ item }}"
+        state: present
+      become: yes
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Mark kubelet, kubeadm, and kubectl on hold
+      shell: apt-mark hold {{ item }}
+      become: yes
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl

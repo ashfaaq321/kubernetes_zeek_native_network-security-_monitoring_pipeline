@@ -1,0 +1,11 @@
+---
+- hosts: all
+  tasks:
+    - name: Install ufw package
+      apt:
+        name: ufw
+        state: latest
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled

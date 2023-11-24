@@ -1,0 +1,29 @@
+---
+- name: Install and Configure Kubernetes
+  hosts: [bullseye_loadbalance_0]
+  become: yes
+
+  tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Install Kubernetes packages
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: hold
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+

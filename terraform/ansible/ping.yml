@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2023 Aravinth Manivannan <realaravinth@batsense.net>
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Configure webservers
+  hosts: [bullseye_libreddit,bullseye_loadbalance]
+  remote_user: root
+
+  tasks:
+    - name: Ensure all VMs are reachable
+      ansible.builtin.ping:

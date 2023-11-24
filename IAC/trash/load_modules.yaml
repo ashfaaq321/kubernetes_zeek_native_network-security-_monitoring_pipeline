@@ -1,0 +1,29 @@
+---
+- name: Load modules
+  hosts: all
+
+  tasks:
+    - name: Load kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - br_netfilter
+        - overlay
+        - ip_vs
+        - ip_vs-rr
+        - ip_vs_wrr
+        - nf_conntrack
+
+    - name: Add sysctl
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_set: true
+        state: present
+        reload: true
+      loop:
+        - { key: net.bridge.bridge-nf-call-ip6tables, value: 1 }
+        - { key: net.bridge.bridge-nf-call-iptables, value: 1 }
+        - { key: net.ipv4.ip_forward, value: 1 }
+

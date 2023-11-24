@@ -1,0 +1,26 @@
+---
+- name: Configure Kubernetes Master Node
+  hosts: [bullseye_loadbalance_0]   # Replace with your target host or group
+  become: yes
+  tasks:
+    - name: Pull Kubernetes container images
+      shell: |
+        sudo kubeadm config images pull --cri-socket "unix:///var/run/cri-dockerd.sock" --kubernetes-version v1.28.1
+      ignore_errors: yes
+      register: pull_images_output
+
+    - name: Initialize Kubernetes master node
+      shell: |
+        sudo kubeadm init --cri-socket "unix:///var/run/cri-dockerd.sock" --pod-network-cidr 192.168.0.0/24 --kubernetes-version 1.28.1 --node-name kmaster
+      args:
+        executable: /bin/bash
+      register: kubeadm_init_output
+      changed_when: '"Your cluster can now use the shared public address" in kubeadm_init_output.stdout'
+
+    - name: Display output of 'Pull Kubernetes container images'
+      debug:
+        var: pull_images_output.stdout_lines
+
+    - name: Display output of 'Initialize Kubernetes master node'
+      debug:
+        var: kubeadm_init_output.stdout_lines

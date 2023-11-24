@@ -1,0 +1,68 @@
+---
+- name: Configure Docker with cri-dockerd using Ansible
+  hosts: all
+  become: true
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+      when: ansible_distribution == 'Debian'
+
+    - name: Install Docker.io package
+      apt:
+        name: docker.io
+        state: present
+      when: ansible_distribution == 'Debian'
+
+    - name: Enable and start Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Download cri-dockerd
+      get_url:
+        url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.2.0/cri-dockerd-v0.2.0-linux-amd64.tar.gz
+        dest: /tmp/cri-dockerd-v0.2.0-linux-amd64.tar.gz
+
+    - name: Extract cri-dockerd
+      ansible.builtin.unarchive:
+        src: /tmp/cri-dockerd-v0.2.0-linux-amd64.tar.gz
+        dest: /usr/local/bin/
+        remote_src: yes
+      notify: Reload systemd
+
+    - name: Download cri-dockerd systemd unit files
+      get_url:
+        url: "{{ item }}"
+        dest: "/etc/systemd/system/{{ item | basename }}"
+      loop:
+        - https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.service
+        - https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket
+
+    - name: Update cri-docker.service to use correct path
+      ansible.builtin.replace:
+        path: /etc/systemd/system/cri-docker.service
+        regexp: '/usr/bin/cri-dockerd'
+        replace: '/usr/local/bin/cri-dockerd'
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start cri-docker.service
+      systemd:
+        name: cri-docker.service
+        enabled: yes
+        state: started
+
+    - name: Enable cri-docker.socket
+      systemd:
+        name: cri-docker.socket
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes

@@ -1,0 +1,9 @@
+---
+- hosts: all
+  tasks:
+    - name: Unarchive a file that is already on the remote machine
+      ansible.builtin.unarchive:
+        src: /tmp/libreddit
+        dest: /usr/local/bin
+        remote_src: yes
+

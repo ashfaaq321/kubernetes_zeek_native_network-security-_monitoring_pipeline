@@ -1,0 +1,14 @@
+{% set unit_name = "libreddit" %}
+
+[Unit]
+Description={{ unit_name }} Service
+After=network.service
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=-/etc/{{ unit_name }}.conf
+ExecStart=/usr/local/bin/{{ unit_name }} -a 127.0.0.1 -p 8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

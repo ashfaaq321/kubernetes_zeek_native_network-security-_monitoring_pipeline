@@ -1,0 +1,11 @@
+---
+- name: Load modules
+  hosts: all
+
+  tasks:
+    - name: Disable swap permanently
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+.*)$'
+        replace: '# \1'
+

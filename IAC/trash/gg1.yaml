@@ -1,0 +1,11 @@
+---
+- name: Deploy cri-dockerd
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Clone the Git repository
+      git:
+        repo: https://github.com/Mirantis/cri-dockerd.git
+        dest: /~/cri-dockerd
+      become: true

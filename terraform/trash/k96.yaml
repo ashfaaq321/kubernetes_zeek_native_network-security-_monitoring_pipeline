@@ -1,0 +1,50 @@
+---
+- name: Install and Configure Kubernetes
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Install Kubernetes packages with lock version
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: latest
+        allow_downgrade: yes
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+
+    - name: Check if Kubernetes packages are on hold
+      ansible.builtin.shell: |
+        if apt-mark showhold | grep -q "kubelet"; then
+          echo "kubelet is already on hold"
+        else
+          apt-mark hold kubelet
+        fi
+        if apt-mark showhold | grep -q "kubeadm"; then
+          echo "kubeadm is already on hold"
+        else
+          apt-mark hold kubeadm
+        fi
+        if apt-mark showhold | grep -q "kubectl"; then
+          echo "kubectl is already on hold"
+        else
+          apt-mark hold kubectl
+        fi
+      when: ansible_distribution == "Debian" and ansible_distribution_release == "bullseye"
+      changed_when: false  # Set this parameter to control task status
+
+    - name: Ensure Kubernetes packages are held
+      ansible.builtin.shell: apt-mark showhold | grep -q "kubelet kubeadm kubectl"
+      changed_when: false  # Set this parameter to control task status
+      ignore_errors: true   # Ignore errors as we are checking the status
+      register: held_status
+
+    - name: Debug held status
+      ansible.builtin.debug:
+        var: held_status

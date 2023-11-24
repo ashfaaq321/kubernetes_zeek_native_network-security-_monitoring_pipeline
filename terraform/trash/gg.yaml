@@ -1,0 +1,67 @@
+---
+- name: Deploy cri-dockerd
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Check if Go is installed
+      stat:
+        path: /usr/local/go/bin/go
+      register: go_installed
+      run_once: true
+
+    - name: Install Go
+      shell: |
+        wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+        sudo tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+      args:
+        executable: /bin/bash
+      when: go_installed.stat.exists == false
+
+    - name: Display installed Go version
+      debug:
+        var: go_version.stdout
+      run_once: true
+
+    - name: Clone the Git repository
+      git:
+        repo: https://github.com/Mirantis/cri-dockerd.git
+        dest: ~/cri-dockerd
+      become: true
+
+    - name: Check if cri-dockerd is built
+      stat:
+        path: "/usr/local/bin/cri-dockerd"
+      register: cri_dockerd_built
+      when: not ansible_check_mode
+
+    - name: Build cri-dockerd
+      shell: |
+        cd ~/cri-dockerd
+        make cri-dockerd
+        sudo install -o root -g root -m 0755 cri-dockerd /usr/local/bin/cri-dockerd
+        sudo install -o root -g root -m 0644 packaging/systemd/* /etc/systemd/system/
+        sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now cri-docker.socket
+      args:
+        executable: /bin/bash
+      when: not ansible_check_mode and cri_dockerd_built.stat.exists == false
+
+    - name: Enable cri-docker.socket
+      systemd:
+        name: cri-docker.socket
+        enabled: yes
+        state: started
+      when: not ansible_check_mode
+
+    - name: Check and start cri-docker service and socket if inactive
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - cri-docker.service
+        - cri-docker.socket
+      when: not ansible_check_mode
+
